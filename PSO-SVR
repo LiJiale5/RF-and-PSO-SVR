@@ -1,0 +1,65 @@
+%%  PSO-SVR
+clc
+clear all
+close all
+
+%% 1.数据输入及处理
+%%
+X=xlsread('',':');
+%%X=cell2mat(struct2cell(X));
+Y=xlsread('',':');%导入mat类型文件
+%%Y=cell2mat(struct2cell(Y));
+%% 设置训练集与测试集
+% 训练集——150个样本
+train_data = X(1:,:);
+train_label = Y(1:);
+% 测试集——50个样本
+test_data = X(:end,:);
+test_label = Y(:end);
+
+%% 数据归一化
+[train_data_scale, ps_input] = mapminmax((train_data)',0,1);%数据归一化
+train_data_scale = (train_data_scale)';
+test_data_scale = (mapminmax('apply',(test_data)',ps_input))';
+
+[train_label_scale, ps_output] = mapminmax((train_label)',0,1);%label归一化
+train_label_scale = (train_label_scale)';
+test_label_scale = (mapminmax('apply',(test_label)',ps_output))';
+
+%% 2.模型创建、训练及仿真测试
+%% PSO参数设置
+    pso_option.c1 = 1.5;% c1:初始为1.5,pso参数局部搜索能力
+    pso_option.c2 = 1.7;% c2:初始为1.7,pso参数全局搜索能力
+    pso_option.maxgen = 200;% maxgen:初始为200,最大进化数量
+    pso_option.sizepop = 20;% sizepop:初始为20,种群最大数量
+    pso_option.k = 0.6;% k:初始为0.6(k belongs to [0.1,1.0]),速率和x的关系(V = kX)##
+    pso_option.wV = 1;% wV:初始为1(wV best belongs to [0.8,1.2]),速率更新公式中速度前面的弹性系数
+    pso_option.wP = 1;% wP:初始为1,种群更新公式中速度前面的弹性系数
+    pso_option.v = 3;%初始为3,SVM Cross Validation参数
+    pso_option.popcmax = 100;% popcmax:初始为100,SVM 参数c的变化的最大值.
+    pso_option.popcmin = 0.00001;% popcmin:初始为0.0001,SVM 参数c的变化的最小值.0.00001
+    pso_option.popgmax = 1000;% popgmax:初始为1000,SVM 参数g的变化的最大值.1
+    pso_option.popgmin = 0.00001;% popgmin:初始为0.01,SVM 参数c的变化的最小值.0.00001
+    
+%% 创建/训练
+[bestCVmse,bestc,bestg] = psoSVMcgForRegress(train_label_scale,train_data_scale,pso_option);%采用PSO预测回归模型c、g
+cmd = [' -c ',num2str(bestc),' -g ',num2str(bestg),' -s 4 -t 2 -h 0'];%选择SVR参数
+model = svmtrain(train_label_scale,train_data_scale,cmd);%对模型进行训练
+
+[Ypre,mse] = svmpredict(test_label_scale, test_data_scale,model);%使用训练好模型进行预测
+[Ypree,mse] = svmpredict(train_label_scale, train_data_scale,model);%使用训练好模型进行预测
+Ypre = Ypre';Ypre=mapminmax('reverse',Ypre,ps_output);Ypre = Ypre';%预测数据反归一化
+Ypree = Ypree';Ypree=mapminmax('reverse',Ypree,ps_output);Ypree = Ypree';%预测数据反归一化
+%% 3.画图
+%%
+figure(2)
+hold on
+plot(test_label,'b:*');
+plot(Ypre,'r-o');
+e = abs(test_label-Ypre);
+
+legend('真实值','预测值','误差');
+xlabel('预测样本');
+ylabel('预测值');
+string = {'测试集预测结果对比'};
+title(string)
